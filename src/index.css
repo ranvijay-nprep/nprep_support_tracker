@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    font-size: 13.5px;
+    line-height: 1.5;
+    background: #f0f4f8;
+    color: #0f172a;
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /* ── INPUTS ── */
+  .field-input {
+    @apply w-full bg-white border-[1.5px] border-surface-border2 rounded-lg px-[11px] py-2 text-[13.5px] text-text-primary font-sans outline-none transition-all duration-150 placeholder:text-text-muted;
+  }
+  .field-input:focus {
+    @apply border-primary;
+    box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+  }
+  select.field-input {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    @apply pr-7 cursor-pointer appearance-none;
+  }
+  textarea.field-input {
+    @apply resize-y min-h-[68px];
+  }
+
+  /* ── BUTTONS ── */
+  .btn-primary {
+    @apply bg-primary text-white font-semibold text-[13px] px-7 py-[9px] rounded-lg flex items-center gap-[7px] cursor-pointer transition-all duration-150 border-0;
+    box-shadow: 0 2px 8px rgba(37,99,235,.3);
+  }
+  .btn-primary:hover { @apply bg-primary-dark -translate-y-px; box-shadow: 0 4px 12px rgba(37,99,235,.4); }
+  .btn-primary:active { transform: none; }
+  .btn-primary:disabled { @apply opacity-55 cursor-not-allowed translate-y-0; box-shadow: none; }
+
+  .btn-ghost {
+    @apply bg-white border-[1.5px] border-surface-border2 text-text-secondary font-medium text-[13px] px-5 py-[9px] rounded-lg cursor-pointer transition-all duration-150;
+  }
+  .btn-ghost:hover { @apply border-primary text-primary; }
+
+  .btn-sm { @apply px-3 py-[5px] text-[12px] rounded-md; }
+
+  /* ── CARD ── */
+  .card { @apply bg-white border border-surface-border rounded-[10px] mb-[14px] overflow-hidden; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .card-header {
+    @apply px-[18px] py-[13px] border-b border-surface-border flex items-center gap-2;
+    background: linear-gradient(to right, #fafbfc, #f8fafc);
+  }
+  .card-title { @apply text-[12px] font-bold tracking-[.6px] uppercase text-text-secondary; }
+  .card-body { @apply px-[18px] py-4; }
+
+  /* ── PRIORITY PILLS ── */
+  .p-pill {
+    @apply flex-1 py-2 rounded-lg border-[1.5px] border-surface-border2 bg-white text-text-secondary font-medium text-[12.5px] cursor-pointer text-center transition-all duration-150;
+  }
+  .p-pill:hover:not(.sel) { @apply border-primary-light text-primary; }
+  .p-pill.sel-high   { background:#fef2f2; border-color:#fca5a5; color:#dc2626; font-weight:700; }
+  .p-pill.sel-medium { background:#fffbeb; border-color:#fcd34d; color:#d97706; font-weight:700; }
+  .p-pill.sel-low    { background:#ecfdf5; border-color:#6ee7b7; color:#059669; font-weight:700; }
+
+  /* ── FCR BUTTONS ── */
+  .fcr-btn {
+    @apply flex-1 py-2 px-2 rounded-lg border-[1.5px] border-surface-border2 bg-white text-text-secondary font-medium text-[12.5px] cursor-pointer text-center transition-all duration-150;
+  }
+  .fcr-btn.sel-yes { background:#ecfdf5; border-color:#6ee7b7; color:#059669; font-weight:700; }
+  .fcr-btn.sel-no  { background:#fef2f2; border-color:#fca5a5; color:#dc2626; font-weight:700; }
+
+  /* ── BADGES ── */
+  .badge { @apply inline-flex items-center px-2 py-[2px] rounded text-[11px] font-semibold whitespace-nowrap border; }
+  .badge-high       { background:#fef2f2; color:#dc2626; border-color:#fecaca; }
+  .badge-medium     { background:#fffbeb; color:#d97706; border-color:#fde68a; }
+  .badge-low        { background:#ecfdf5; color:#059669; border-color:#a7f3d0; }
+  .badge-pending    { background:#f8fafc; color:#64748b; border-color:#e2e8f0; }
+  .badge-inprocess  { background:#eff6ff; color:#2563eb; border-color:#bfdbfe; }
+  .badge-resolved   { background:#ecfdf5; color:#059669; border-color:#a7f3d0; }
+  .badge-closed     { background:#f0fdf4; color:#16a34a; border-color:#bbf7d0; }
+  .badge-nosolution { background:#fef2f2; color:#dc2626; border-color:#fecaca; }
+
+  /* ── UPDATE BUTTON ── */
+  .upd-btn {
+    background:#eff6ff; border:1px solid #bfdbfe;
+    @apply rounded-md text-primary font-semibold text-[11px] px-[10px] py-1 cursor-pointer transition-all duration-150;
+  }
+  .upd-btn:hover { @apply bg-primary text-white; }
+
+  /* ── STATS ── */
+  .stat-card { @apply bg-white border border-surface-border rounded-[10px] px-4 py-[14px]; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .stat-num  { @apply text-2xl font-extrabold leading-none; letter-spacing: -.5px; }
+  .stat-lbl  { @apply text-[11px] text-text-muted font-medium mt-[3px]; }
+
+  /* ── SEARCH BAR ── */
+  .search-inp {
+    @apply w-full bg-white border-[1.5px] border-surface-border2 rounded-lg py-2 pl-8 pr-3 text-[13.5px] outline-none transition-all duration-150 text-text-primary;
+  }
+  .search-inp:focus { @apply border-primary; box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+  .filter-sel {
+    @apply bg-white border-[1.5px] border-surface-border2 rounded-lg py-2 pl-3 pr-7 text-[13px] text-text-secondary outline-none cursor-pointer appearance-none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+  }
+
+  /* ── TABLE ── */
+  .tbl-th { @apply bg-[#f8fafc] px-3 py-[10px] text-left text-[10.5px] font-bold text-text-muted tracking-[.7px] uppercase border-b border-surface-border whitespace-nowrap; }
+  .tbl-td { @apply px-3 py-[10px] border-b border-[#f1f5f9] align-middle text-[12.5px]; }
+
+  /* ── SPINNER ── */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { animation: spin .65s linear infinite; }
+
+  /* ── TOAST ── */
+  @keyframes toastIn { from { transform: translateY(80px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+}
