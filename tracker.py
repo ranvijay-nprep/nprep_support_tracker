@@ -38,11 +38,13 @@ def cmd_add(args):
 
 def cmd_list(args):
     tickets = load_tickets()
-    open_tickets = [t for t in tickets if t["status"] == "open"]
-    if not open_tickets:
+    filtered = [t for t in tickets if t["status"] == "open"]
+    if args.priority:
+        filtered = [t for t in filtered if t["priority"] == args.priority]
+    if not filtered:
         print("No open tickets.")
         return
-    for t in open_tickets:
+    for t in filtered:
         print(f"  #{t['id']} [{t['priority']:6}] {t['title']}")
 
 
@@ -70,6 +72,7 @@ def main():
     add_p.set_defaults(func=cmd_add)
 
     list_p = sub.add_parser("list", help="List open tickets")
+    list_p.add_argument("--priority", choices=VALID_PRIORITIES, help="Filter by priority")
     list_p.set_defaults(func=cmd_list)
 
     resolve_p = sub.add_parser("resolve", help="Mark a ticket resolved")
