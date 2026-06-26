@@ -6,7 +6,7 @@ function pClass(p) { return { High:'badge-high', Medium:'badge-medium', Low:'bad
 function sClass(s) {
   return {
     Pending:'badge-pending', 'In Process':'badge-inprocess',
-    Resolved:'badge-resolved', Closed:'badge-closed', 'No Solution Yet':'badge-nosolution',
+    Resolved:'badge-resolved', 'No Solution Yet':'badge-nosolution',
   }[s] || 'badge-pending'
 }
 
@@ -29,7 +29,7 @@ export default function QueryLog() {
     setLoading(true)
     const { data, error } = await supabase
       .from('support_tickets')
-      .select('id,ticket_id,date,student_name,phone,batch,source,query_type,category,query_description,priority,assignee,status,remark,date_resolved,resolution_hrs,created_at')
+      .select('id,ticket_id,date,student_name,phone,batch,source,query_type,category,query_description,priority,assignee,status,remark,date_received,date_resolved,resolution_hrs,created_at')
       .order('created_at', { ascending: false })
       .limit(100)
     setLoading(false)
@@ -80,7 +80,16 @@ export default function QueryLog() {
 
   // Quick resolve — optimistic, no modal
   async function quickResolve(row) {
-    const patch = { status: 'Resolved', date_resolved: new Date().toISOString().slice(0,10), updated_at: new Date().toISOString() }
+    const resolvedAt  = new Date()
+    const receivedAt  = new Date(row.date_received || row.created_at)
+    const resolution_hrs = Math.round((resolvedAt - receivedAt) / (1000 * 60 * 60))
+    const patch = {
+      status: 'Resolved',
+      date_resolved: resolvedAt.toISOString().split('T')[0],
+      resolution_hrs,
+      updated_at: resolvedAt.toISOString(),
+    }
+    console.log('[quickResolve] patch:', patch)
     setAllRows(prev => prev.map(r => r.id === row.id ? { ...r, ...patch } : r))
     const { error } = await supabase.from('support_tickets').update(patch).eq('id', row.id)
     if (error) { showToast('error', 'Failed', error.message); loadLog() }
@@ -96,6 +105,13 @@ export default function QueryLog() {
   async function saveUpdate() {
     if (!modal) return
     const patch = { status: mStatus, remark: mRemark, updated_at: new Date().toISOString() }
+    if (mStatus === 'Resolved') {
+      const resolvedAt = new Date()
+      const receivedAt = new Date(modal.date_received || modal.created_at)
+      patch.date_resolved  = resolvedAt.toISOString().split('T')[0]
+      patch.resolution_hrs = Math.round((resolvedAt - receivedAt) / (1000 * 60 * 60))
+    }
+    console.log('[saveUpdate] patch:', patch)
     setAllRows(prev => prev.map(r => r.id === modal.id ? { ...r, ...patch } : r))
     setModal(null)
     const { error } = await supabase.from('support_tickets').update(patch).eq('id', modal.id)
@@ -110,7 +126,7 @@ export default function QueryLog() {
     return () => window.removeEventListener('keydown', fn)
   }, [])
 
-  const statuses  = master?.STATUS    || ['Pending','In Process','Resolved','Closed','No Solution Yet']
+  const statuses  = (master?.STATUS || ['Pending','In Process','Resolved','No Solution Yet']).filter(s => s !== 'Closed')
   const assignees = master?.ASSIGNEE  || []
 
   return (
@@ -242,7 +258,7 @@ export default function QueryLog() {
                     <div className="flex items-center gap-1">
                       <button className="upd-btn" onClick={() => openModal(r)}>Update</button>
                       {/* One-click resolve — appears on hover, hidden for already-resolved */}
-                      {r.status !== 'Resolved' && r.status !== 'Closed' && (
+                      {r.status !== 'Resolved' && (
                         <button
                           className="opacity-0 group-hover:opacity-100 transition-opacity bg-status-successBg border border-[#6ee7b7] text-status-success text-[10.5px] font-semibold px-[7px] py-[3px] rounded cursor-pointer hover:bg-status-success hover:text-white whitespace-nowrap"
                           onClick={() => quickResolve(r)}

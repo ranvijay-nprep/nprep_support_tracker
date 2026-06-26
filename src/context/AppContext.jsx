@@ -53,8 +53,9 @@ export function AppProvider({ children }) {
       }
     }
     if (!m.STATUS.length) {
-      m.STATUS = ['Pending','In Process','Resolved','Closed','No Solution Yet']
+      m.STATUS = ['Pending','In Process','Resolved','No Solution Yet']
     }
+    m.STATUS = m.STATUS.filter(s => s !== 'Closed')
     return m
   }
 
