@@ -153,7 +153,7 @@ export default function NewQuery() {
       owner:                  form.owner,
       assignee:               form.assignee,
       status:                 form.status || 'Pending',
-      date_received:          form.date,
+      date_received:          new Date().toISOString(),
       first_contact_resolved: form.fcr,
       remark:                 form.remark.trim(),
     }

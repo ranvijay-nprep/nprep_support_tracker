@@ -120,11 +120,11 @@ export default function QueryLog() {
   // ── Quick resolve ──
   async function quickResolve(row) {
     const resolvedAt     = new Date()
-    const receivedAt     = new Date(row.date_received || row.created_at)
-    const resolution_hrs = Math.round((resolvedAt - receivedAt) / (1000 * 60 * 60))
+    const receivedAt     = new Date(row.created_at) // created_at has exact time; date_received is date-only
+    const resolution_hrs = Math.round(((resolvedAt - receivedAt) / (1000 * 60 * 60)) * 10) / 10
     const patch = {
       status: 'Resolved',
-      date_resolved: resolvedAt.toISOString().split('T')[0],
+      date_resolved: resolvedAt.toISOString(),
       resolution_hrs,
       updated_at: resolvedAt.toISOString(),
     }
@@ -144,9 +144,9 @@ export default function QueryLog() {
     const patch = { status: mStatus, remark: mRemark, updated_at: new Date().toISOString() }
     if (mStatus === 'Resolved') {
       const resolvedAt     = new Date()
-      const receivedAt     = new Date(modal.date_received || modal.created_at)
-      patch.date_resolved  = resolvedAt.toISOString().split('T')[0]
-      patch.resolution_hrs = Math.round((resolvedAt - receivedAt) / (1000 * 60 * 60))
+      const receivedAt     = new Date(modal.created_at)
+      patch.date_resolved  = resolvedAt.toISOString()
+      patch.resolution_hrs = Math.round(((resolvedAt - receivedAt) / (1000 * 60 * 60)) * 10) / 10
     }
     console.log('[saveUpdate] patch:', patch)
     setRows(prev => prev.map(r => r.id === modal.id ? { ...r, ...patch } : r))
