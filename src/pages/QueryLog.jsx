@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 
+const PAGE_SIZE = 50
+
 function pClass(p) { return { High:'badge-high', Medium:'badge-medium', Low:'badge-low' }[p] || 'badge-low' }
 function sClass(s) {
   return {
@@ -14,74 +16,111 @@ const COLS = ['Ticket','Date','Student','Batch','Source','Type → Category','Pr
 
 export default function QueryLog() {
   const { master, agent, showToast } = useApp()
-  const [allRows,  setAllRows]  = useState([])
-  const [loading,  setLoading]  = useState(false)
-  const [search,   setSearch]   = useState('')
-  const [fStatus,  setFStatus]  = useState('')
-  const [fPri,     setFPri]     = useState('')
-  const [fQueue,   setFQueue]   = useState('')
-  const [modal,    setModal]    = useState(null)
-  const [mStatus,  setMStatus]  = useState('')
-  const [mRemark,  setMRemark]  = useState('')
-  const realtimeRef = useRef(null)
+  const [rows,       setRows]       = useState([])
+  const [totalCount, setTotalCount] = useState(0)
+  const [stats,      setStats]      = useState({ total:0, pending:0, inproc:0, resolved:0, noSol:0 })
+  const [loading,    setLoading]    = useState(false)
+  const [search,     setSearch]     = useState('')
+  const [dSearch,    setDSearch]    = useState('')
+  const [fStatus,    setFStatus]    = useState('')
+  const [fPri,       setFPri]       = useState('')
+  const [fQueue,     setFQueue]     = useState('')
+  const [page,       setPage]       = useState(1)
+  const [modal,      setModal]      = useState(null)
+  const [mStatus,    setMStatus]    = useState('')
+  const [mRemark,    setMRemark]    = useState('')
+  const debounceRef   = useRef(null)
+  const filtersRef    = useRef({ page:1, dSearch:'', fStatus:'', fPri:'', fQueue:'' })
 
-  const loadLog = useCallback(async () => {
+  // Debounce search 300ms
+  useEffect(() => {
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => setDSearch(search), 300)
+    return () => clearTimeout(debounceRef.current)
+  }, [search])
+
+  // Reset to page 1 when filters change
+  useEffect(() => { setPage(1) }, [dSearch, fStatus, fPri, fQueue])
+
+  // Keep filtersRef in sync for realtime handlers
+  useEffect(() => {
+    filtersRef.current = { page, dSearch, fStatus, fPri, fQueue }
+  }, [page, dSearch, fStatus, fPri, fQueue])
+
+  // ── Stats: lightweight separate query (global, no filters) ──
+  const loadStats = useCallback(async () => {
+    const { data } = await supabase.from('support_tickets').select('status')
+    if (!data) return
+    setStats({
+      total:    data.length,
+      pending:  data.filter(r => r.status === 'Pending').length,
+      inproc:   data.filter(r => r.status === 'In Process').length,
+      resolved: data.filter(r => r.status === 'Resolved').length,
+      noSol:    data.filter(r => r.status === 'No Solution Yet').length,
+    })
+  }, [])
+
+  // ── Page data: server-side pagination + filters ──
+  const loadPage = useCallback(async (pg, ds, fs, fp, fq) => {
     setLoading(true)
-    const { data, error } = await supabase
+    const from = (pg - 1) * PAGE_SIZE
+    const to   = from + PAGE_SIZE - 1
+
+    let q = supabase
       .from('support_tickets')
-      .select('id,ticket_id,date,student_name,phone,batch,source,query_type,category,query_description,priority,assignee,status,remark,date_received,date_resolved,resolution_hrs,created_at')
+      .select(
+        'id,ticket_id,date,student_name,phone,batch,source,query_type,category,' +
+        'query_description,priority,assignee,status,remark,date_received,date_resolved,resolution_hrs,created_at',
+        { count: 'exact' }
+      )
       .order('created_at', { ascending: false })
-      .limit(100)
+      .range(from, to)
+
+    if (fs) q = q.eq('status', fs)
+    if (fp) q = q.eq('priority', fp)
+    if (fq === '__mine__') q = q.eq('assignee', agent)
+    else if (fq) q = q.eq('assignee', fq)
+    if (ds) q = q.or(`student_name.ilike.%${ds}%,ticket_id.ilike.%${ds}%,phone.ilike.%${ds}%`)
+
+    const { data, count, error } = await q
     setLoading(false)
     if (error) { showToast('error', 'Failed to load', error.message); return }
-    setAllRows(data || [])
-  }, [])
+    setRows(data || [])
+    setTotalCount(count || 0)
+  }, [agent, showToast])
 
-  // Initial load
-  useEffect(() => { loadLog() }, [loadLog])
+  // Load page when filters/page change
+  useEffect(() => {
+    loadPage(page, dSearch, fStatus, fPri, fQueue)
+  }, [page, dSearch, fStatus, fPri, fQueue, loadPage])
 
-  // Supabase realtime subscription — other agents' changes appear instantly
+  // Load stats on mount
+  useEffect(() => { loadStats() }, [loadStats])
+
+  // ── Realtime: reload page + stats on change ──
   useEffect(() => {
     const channel = supabase.channel('tickets-live')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_tickets' },
-        payload => setAllRows(prev => [payload.new, ...prev].slice(0, 100))
-      )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'support_tickets' },
-        payload => setAllRows(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r))
-      )
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_tickets' }, () => {
+        const f = filtersRef.current
+        loadPage(f.page, f.dSearch, f.fStatus, f.fPri, f.fQueue)
+        loadStats()
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'support_tickets' }, payload => {
+        setRows(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r))
+        loadStats()
+      })
       .subscribe()
-    realtimeRef.current = channel
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, [loadPage, loadStats])
 
-  // Client-side filter — instant, no network
-  const filtered = allRows.filter(r => {
-    const q = search.toLowerCase()
-    const ms  = !q  || [r.student_name, r.phone, r.ticket_id, r.query_description].some(v => String(v||'').toLowerCase().includes(q))
-    const mst = !fStatus || r.status    === fStatus
-    const mp  = !fPri    || r.priority  === fPri
-    const mq  = !fQueue  || (fQueue === '__mine__' ? r.assignee === agent : r.assignee === fQueue)
-    return ms && mst && mp && mq
-  })
-
-  // Stats (from full dataset, not filtered)
-  const stats = {
-    total:    allRows.length,
-    pending:  allRows.filter(r => r.status === 'Pending').length,
-    inproc:   allRows.filter(r => r.status === 'In Process').length,
-    resolved: allRows.filter(r => r.status === 'Resolved' || r.status === 'Closed').length,
-    noSol:    allRows.filter(r => r.status === 'No Solution Yet').length,
-  }
-
-  // Toggle stat filter on card click
   function toggleStatFilter(status) {
     setFStatus(prev => prev === status ? '' : status)
   }
 
-  // Quick resolve — optimistic, no modal
+  // ── Quick resolve ──
   async function quickResolve(row) {
-    const resolvedAt  = new Date()
-    const receivedAt  = new Date(row.date_received || row.created_at)
+    const resolvedAt     = new Date()
+    const receivedAt     = new Date(row.date_received || row.created_at)
     const resolution_hrs = Math.round((resolvedAt - receivedAt) / (1000 * 60 * 60))
     const patch = {
       status: 'Resolved',
@@ -90,36 +129,33 @@ export default function QueryLog() {
       updated_at: resolvedAt.toISOString(),
     }
     console.log('[quickResolve] patch:', patch)
-    setAllRows(prev => prev.map(r => r.id === row.id ? { ...r, ...patch } : r))
+    setRows(prev => prev.map(r => r.id === row.id ? { ...r, ...patch } : r))
     const { error } = await supabase.from('support_tickets').update(patch).eq('id', row.id)
-    if (error) { showToast('error', 'Failed', error.message); loadLog() }
-    else showToast('success', 'Resolved!', row.ticket_id)
+    if (error) { showToast('error', 'Failed', error.message); loadPage(page, dSearch, fStatus, fPri, fQueue) }
+    else { showToast('success', 'Resolved!', row.ticket_id); loadStats() }
   }
 
   function openModal(row) {
-    setModal(row)
-    setMStatus(row.status)
-    setMRemark(row.remark || '')
+    setModal(row); setMStatus(row.status); setMRemark(row.remark || '')
   }
 
   async function saveUpdate() {
     if (!modal) return
     const patch = { status: mStatus, remark: mRemark, updated_at: new Date().toISOString() }
     if (mStatus === 'Resolved') {
-      const resolvedAt = new Date()
-      const receivedAt = new Date(modal.date_received || modal.created_at)
+      const resolvedAt     = new Date()
+      const receivedAt     = new Date(modal.date_received || modal.created_at)
       patch.date_resolved  = resolvedAt.toISOString().split('T')[0]
       patch.resolution_hrs = Math.round((resolvedAt - receivedAt) / (1000 * 60 * 60))
     }
     console.log('[saveUpdate] patch:', patch)
-    setAllRows(prev => prev.map(r => r.id === modal.id ? { ...r, ...patch } : r))
+    setRows(prev => prev.map(r => r.id === modal.id ? { ...r, ...patch } : r))
     setModal(null)
     const { error } = await supabase.from('support_tickets').update(patch).eq('id', modal.id)
-    if (error) { showToast('error', 'Failed', error.message); loadLog() }
-    else showToast('success', 'Updated!', `${modal.ticket_id} → ${mStatus}`)
+    if (error) { showToast('error', 'Failed', error.message); loadPage(page, dSearch, fStatus, fPri, fQueue) }
+    else { showToast('success', 'Updated!', `${modal.ticket_id} → ${mStatus}`); loadStats() }
   }
 
-  // Escape to close modal
   useEffect(() => {
     const fn = e => { if (e.key === 'Escape') setModal(null) }
     window.addEventListener('keydown', fn)
@@ -127,7 +163,11 @@ export default function QueryLog() {
   }, [])
 
   const statuses  = (master?.STATUS || ['Pending','In Process','Resolved','No Solution Yet']).filter(s => s !== 'Closed')
-  const assignees = master?.ASSIGNEE  || []
+  const assignees = master?.ASSIGNEE || []
+
+  const startNum  = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
+  const endNum    = Math.min(page * PAGE_SIZE, totalCount)
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE)
 
   return (
     <div className="h-full flex flex-col overflow-hidden py-4 gap-3">
@@ -135,10 +175,10 @@ export default function QueryLog() {
       {/* ── Stats bar — click to filter ── */}
       <div className="shrink-0 grid grid-cols-5 gap-[8px]">
         {[
-          { label:'Total',       val: stats.total,    color:'text-primary',        filter: ''              },
-          { label:'Pending',     val: stats.pending,  color:'text-status-warning', filter: 'Pending'       },
-          { label:'In Process',  val: stats.inproc,   color:'text-status-purple',  filter: 'In Process'    },
-          { label:'Resolved',    val: stats.resolved, color:'text-status-success', filter: 'Resolved'      },
+          { label:'Total',       val: stats.total,    color:'text-primary',        filter: ''               },
+          { label:'Pending',     val: stats.pending,  color:'text-status-warning', filter: 'Pending'        },
+          { label:'In Process',  val: stats.inproc,   color:'text-status-purple',  filter: 'In Process'     },
+          { label:'Resolved',    val: stats.resolved, color:'text-status-success', filter: 'Resolved'       },
           { label:'No Solution', val: stats.noSol,    color:'text-status-danger',  filter: 'No Solution Yet'},
         ].map(s => (
           <div
@@ -176,7 +216,7 @@ export default function QueryLog() {
         <button
           id="refresh-log-btn"
           className="bg-white border-[1.5px] border-surface-border2 rounded-lg text-text-secondary font-medium text-[12.5px] px-3 py-[7px] cursor-pointer flex items-center gap-[5px] transition-all hover:border-primary hover:text-primary shrink-0"
-          onClick={loadLog}
+          onClick={() => { loadPage(page, dSearch, fStatus, fPri, fQueue); loadStats() }}
           title="Refresh (R)"
         >↻</button>
         {(fStatus || fPri || fQueue || search) && (
@@ -188,7 +228,7 @@ export default function QueryLog() {
       </div>
 
       {/* ── Table — fills remaining height, sticky header ── */}
-      <div className="flex-1 overflow-hidden bg-white border border-surface-border rounded-[10px]" style={{ boxShadow:'0 1px 3px rgba(0,0,0,.08)' }}>
+      <div className="flex-1 overflow-hidden bg-white border border-surface-border rounded-[10px]" style={{ boxShadow:'0 1px 3px rgba(0,0,0,.08)', minHeight: 0 }}>
         <div className="h-full overflow-y-auto">
           <table className="w-full border-collapse text-[12.5px]">
             <thead className="sticky top-0 z-10">
@@ -201,25 +241,21 @@ export default function QueryLog() {
                   <div className="font-semibold text-text-secondary">Loading…</div>
                 </td></tr>
               )}
-              {!loading && !filtered.length && (
+              {!loading && !rows.length && (
                 <tr><td colSpan={11} className="text-center py-12 text-text-muted">
-                  <div className="text-[28px] mb-2">
-                    {fStatus === 'High' ? '🎉' : allRows.length ? '🔍' : '📂'}
-                  </div>
+                  <div className="text-[28px] mb-2">{totalCount ? '🔍' : '📂'}</div>
                   <div className="font-semibold text-text-secondary text-[14px]">
-                    {allRows.length
-                      ? `No ${fPri || ''} ${fStatus || ''} tickets`
-                      : 'No data loaded'}
+                    {totalCount ? `No ${fPri || ''} ${fStatus || ''} tickets`.trim() : 'No tickets yet'}
                   </div>
                   <div className="text-[12px] mt-1 text-text-muted">
-                    {allRows.length ? 'Try different filters' : 'Click Refresh to load'}
+                    {totalCount ? 'Try different filters' : 'Log a query to get started'}
                   </div>
                 </td></tr>
               )}
-              {!loading && filtered.map(r => (
+              {!loading && rows.map(r => (
                 <tr
                   key={r.id}
-                  className={`group hover:bg-[#fafbff] transition-colors ${r.assignee === agent ? '' : ''}`}
+                  className="group hover:bg-[#fafbff] transition-colors"
                   style={r.assignee === agent ? { borderLeft: '3px solid #2563eb' } : {}}
                 >
                   <td className="tbl-td">
@@ -236,11 +272,9 @@ export default function QueryLog() {
                     <div className="font-semibold text-[12px] leading-tight">{r.query_type || '—'}</div>
                     <div className="text-[10.5px] text-text-muted">{r.category || ''}</div>
                   </td>
-                  {/* Click badge to filter by priority */}
                   <td className="tbl-td cursor-pointer" onClick={() => setFPri(fPri === r.priority ? '' : r.priority)} title="Filter by priority">
                     <span className={`badge ${pClass(r.priority)}`}>{r.priority || '—'}</span>
                   </td>
-                  {/* Click name to filter by agent */}
                   <td className="tbl-td text-text-secondary text-[12px] cursor-pointer hover:text-primary transition-colors"
                     onClick={() => setFQueue(fQueue === r.assignee ? '' : r.assignee)}
                     title="Filter by agent">
@@ -257,7 +291,6 @@ export default function QueryLog() {
                   <td className="tbl-td">
                     <div className="flex items-center gap-1">
                       <button className="upd-btn" onClick={() => openModal(r)}>Update</button>
-                      {/* One-click resolve — appears on hover, hidden for already-resolved */}
                       {r.status !== 'Resolved' && (
                         <button
                           className="opacity-0 group-hover:opacity-100 transition-opacity bg-status-successBg border border-[#6ee7b7] text-status-success text-[10.5px] font-semibold px-[7px] py-[3px] rounded cursor-pointer hover:bg-status-success hover:text-white whitespace-nowrap"
@@ -273,6 +306,38 @@ export default function QueryLog() {
           </table>
         </div>
       </div>
+
+      {/* ── Pagination bar ── */}
+      {totalCount > 0 && (
+        <div className="shrink-0 flex items-center justify-between px-1">
+          <span style={{ fontSize: 12, color: '#64748b' }}>
+            Showing <strong>{startNum}–{endNum}</strong> of <strong>{totalCount}</strong> tickets
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={page === 1}
+              onClick={() => setPage(p => p - 1)}
+              style={{
+                padding: '5px 14px', borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: page === 1 ? 'not-allowed' : 'pointer',
+                border: '1px solid #e2e8f0', background: page === 1 ? '#f8fafc' : '#fff',
+                color: page === 1 ? '#cbd5e1' : '#475569', transition: 'all 0.15s',
+              }}
+            >← Prev</button>
+            <span style={{ fontSize: 12, color: '#94a3b8', minWidth: 60, textAlign: 'center' }}>
+              Page {page} / {totalPages}
+            </span>
+            <button
+              disabled={page >= totalPages}
+              onClick={() => setPage(p => p + 1)}
+              style={{
+                padding: '5px 14px', borderRadius: 7, fontSize: 12.5, fontWeight: 600, cursor: page >= totalPages ? 'not-allowed' : 'pointer',
+                border: '1px solid #e2e8f0', background: page >= totalPages ? '#f8fafc' : '#fff',
+                color: page >= totalPages ? '#cbd5e1' : '#475569', transition: 'all 0.15s',
+              }}
+            >Next →</button>
+          </div>
+        </div>
+      )}
 
       {/* ── Update Modal ── */}
       {modal && (

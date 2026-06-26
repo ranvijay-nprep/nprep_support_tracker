@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react'
+import { useCallback, useEffect, useReducer, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 
@@ -72,12 +72,30 @@ function Divider({ label }) {
 // ── Main ────────────────────────────────────────────────────────────────────
 
 export default function NewQuery() {
-  const { master, agent, showToast, showSpinner, generateTicketId } = useApp()
+  const { master, agent, showToast, showSpinner } = useApp()
   const [form, dispatch] = useReducer(reducer, freshForm(agent))
   const [submitting, setSubmitting] = useState(false)
-  const [nextTicket, setNextTicket] = useState(generateTicketId)
+  const [nextTicket, setNextTicket] = useState('…')
+  const [ticketLoading, setTicketLoading] = useState(false)
 
   const set = k => v => dispatch({ type: 'set', key: k, val: v })
+
+  const fetchTicketId = useCallback(async () => {
+    setTicketLoading(true)
+    const { data, error } = await supabase.rpc('generate_ticket_id')
+    setTicketLoading(false)
+    if (error) {
+      console.error('generate_ticket_id RPC error:', error)
+      // fallback to timestamp-based ID
+      const now = new Date()
+      const ym = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}`
+      setNextTicket(`NP${ym}${Date.now().toString(36).toUpperCase().slice(-5)}`)
+    } else {
+      setNextTicket(data)
+    }
+  }, [])
+
+  useEffect(() => { fetchTicketId() }, [fetchTicketId])
 
   useEffect(() => {
     if (agent) dispatch({ type: 'set', key: 'assignee', val: agent })
@@ -117,7 +135,7 @@ export default function NewQuery() {
     MEM.set('source', form.source)
     MEM.set('dept', form.dept)
 
-    const ticket_id = generateTicketId()
+    const ticket_id = nextTicket
     const payload = {
       ticket_id,
       date:                   form.date,
@@ -147,14 +165,14 @@ export default function NewQuery() {
       showToast('error', 'Save failed', error.message)
     } else {
       showToast('success', 'Query logged! ✓', `Ticket: ${ticket_id}`)
-      setNextTicket(generateTicketId())
+      fetchTicketId()
       dispatch({ type: 'reset', agent })
     }
   }
 
   function handleReset() {
     dispatch({ type: 'reset', agent })
-    setNextTicket(generateTicketId())
+    fetchTicketId()
   }
 
   const statuses = master?.STATUS || ['Pending','In Process','Resolved','Closed','No Solution Yet']
@@ -176,11 +194,11 @@ export default function NewQuery() {
             <kbd style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace' }}>Ctrl+↵</kbd> submit
           </span>
           <span style={{
-            fontSize: 11.5, fontWeight: 600, color: '#2563eb',
+            fontSize: 11.5, fontWeight: 600, color: ticketLoading ? '#94a3b8' : '#2563eb',
             border: '1px solid #e2e8f0', borderRadius: 20,
             padding: '3px 12px', fontFamily: 'JetBrains Mono, monospace',
-            letterSpacing: 0.3,
-          }}>{nextTicket}</span>
+            letterSpacing: 0.3, transition: 'color 0.2s',
+          }}>{ticketLoading ? 'Loading…' : nextTicket}</span>
         </div>
       </div>
 
