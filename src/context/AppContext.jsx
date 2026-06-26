@@ -5,19 +5,19 @@ const AppCtx = createContext(null)
 export const useApp = () => useContext(AppCtx)
 
 export function AppProvider({ children }) {
-  const [master, setMaster]   = useState(null)   // loaded settings
-  const [agent,  setAgent]    = useState(() => localStorage.getItem('nprep_agent') || '')
-  const [toast,  setToast]    = useState(null)   // { type, title, sub }
-  const [spinner, setSpinner] = useState(false)
-  const [spinnerLabel, setSpinnerLabel] = useState('Loading…')
+  const [master,      setMaster]      = useState(null)
+  const [agent,       setAgent]       = useState(() => localStorage.getItem('nprep_agent') || '')
+  const [toast,       setToast]       = useState(null)
+  const [spinner,     setSpinner]     = useState(false)
+  const [spinnerLabel,setSpinnerLabel]= useState('Loading…')
   const toastTimer = useRef(null)
 
   useEffect(() => { loadMaster() }, [])
 
   async function loadMaster() {
     setSpinner(true); setSpinnerLabel('Loading settings…')
-    const [{ data, error }, { data: agentsData }] = await Promise.all([
-      supabase.from('settings').select('*'),
+    const [{ data: settingsData, error }, { data: agentsData }] = await Promise.all([
+      supabase.from('settings').select('section,key,value'),
       supabase.from('agents').select('name').eq('active', true).order('name'),
     ])
     if (error) {
@@ -25,7 +25,7 @@ export function AppProvider({ children }) {
       setSpinner(false)
       return
     }
-    const m = parseMaster(data)
+    const m = parseMaster(settingsData || [])
     m.ASSIGNEE = agentsData?.map(a => a.name) || []
     setMaster(m)
     setSpinner(false)
@@ -40,7 +40,7 @@ export function AppProvider({ children }) {
     for (const r of rows) {
       const s = r.section?.trim()
       const k = r.key?.trim()
-      const v = r.value?.trim() || ''
+      const v = (r.value || '').trim()
       if (!s || !k) continue
       if (s === 'CATEGORY') {
         m.CATEGORY[k] = v ? v.split(',').map(x => x.trim()).filter(Boolean) : []
@@ -53,24 +53,18 @@ export function AppProvider({ children }) {
       }
     }
     if (!m.STATUS.length) {
-      m.STATUS = ['Pending', 'In Process', 'Resolved', 'Closed', 'No Solution Yet']
+      m.STATUS = ['Pending','In Process','Resolved','Closed','No Solution Yet']
     }
     return m
   }
 
-  async function generateTicketId() {
-    const now  = new Date()
-    const ym   = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}`
-    const prefix = `NP${ym}`
-    const { data } = await supabase
-      .from('support_tickets')
-      .select('ticket_id')
-      .like('ticket_id', `${prefix}%`)
-      .order('ticket_id', { ascending: false })
-      .limit(1)
-    const last = data?.[0]?.ticket_id
-    const serial = last ? parseInt(last.slice(-3)) + 1 : 1
-    return `${prefix}${String(serial).padStart(3, '0')}`
+  // Ticket ID: timestamp-based, no DB query, no race condition
+  // Format: NP + YYYYMM + 6-char base36 timestamp suffix
+  function generateTicketId() {
+    const now = new Date()
+    const ym  = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}`
+    const suffix = Date.now().toString(36).toUpperCase().slice(-5)
+    return `NP${ym}${suffix}`
   }
 
   function saveAgent(name) {
@@ -90,7 +84,13 @@ export function AppProvider({ children }) {
   }
 
   return (
-    <AppCtx.Provider value={{ master, loadMaster, agent, saveAgent, toast, showToast, spinner, spinnerLabel, showSpinner, generateTicketId }}>
+    <AppCtx.Provider value={{
+      master, loadMaster,
+      agent, saveAgent,
+      toast, showToast,
+      spinner, spinnerLabel, showSpinner,
+      generateTicketId,
+    }}>
       {children}
     </AppCtx.Provider>
   )
