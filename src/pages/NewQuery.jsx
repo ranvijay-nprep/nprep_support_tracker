@@ -2,10 +2,9 @@ import { useEffect, useReducer, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { supabase } from '../lib/supabase'
 
-// Form memory — remember last source/dept between sessions (not student data)
 const MEM = {
-  get: key => localStorage.getItem(`nprep_mem_${key}`) || '',
-  set: (key, val) => val && localStorage.setItem(`nprep_mem_${key}`, val),
+  get: k  => localStorage.getItem(`nprep_mem_${k}`) || '',
+  set: (k, v) => v && localStorage.setItem(`nprep_mem_${k}`, v),
 }
 
 function freshForm(agent) {
@@ -16,9 +15,9 @@ function freshForm(agent) {
     resp: '', sameSource: true,
     qtype: '', cat: '', desc: '',
     priority: '',
-    dept:       MEM.get('dept'),
+    dept:     MEM.get('dept'),
     owner: '',
-    assignee:   agent || '',
+    assignee: agent || '',
     status: 'Pending',
     fcr: '', remark: '',
   }
@@ -40,9 +39,9 @@ function CLabel({ children, req }) {
   )
 }
 
-function CField({ label, req, children, className = '' }) {
+function CField({ label, req, children }) {
   return (
-    <div className={`flex flex-col ${className}`}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       <CLabel req={req}>{label}</CLabel>
       {children}
     </div>
@@ -58,57 +57,41 @@ function CSel({ value, onChange, opts = [], placeholder = '— Select —', disa
   )
 }
 
-// ── Divider between groups ───────────────────────────────────────────────────
+// ── Minimal section divider ──────────────────────────────────────────────────
 function Divider({ label }) {
   return (
-    <div className="flex items-center gap-2 py-[2px]">
-      <div className="text-[9.5px] font-bold uppercase tracking-[.8px] text-text-muted whitespace-nowrap">{label}</div>
-      <div className="flex-1 h-px bg-surface-border" />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '1px 0' }}>
+      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: 1, textTransform: 'uppercase', color: '#94a3b8', whiteSpace: 'nowrap' }}>
+        {label}
+      </span>
+      <div style={{ flex: 1, height: 1, background: '#f1f5f9' }} />
     </div>
   )
 }
 
-// ── Main page ────────────────────────────────────────────────────────────────
+// ── Main ────────────────────────────────────────────────────────────────────
 
 export default function NewQuery() {
   const { master, agent, showToast, showSpinner, generateTicketId } = useApp()
   const [form, dispatch] = useReducer(reducer, freshForm(agent))
   const [submitting, setSubmitting] = useState(false)
-  const [nextTicket, setNextTicket] = useState(generateTicketId())
+  const [nextTicket, setNextTicket] = useState(generateTicketId)
 
-  const set = key => val => dispatch({ type: 'set', key, val })
+  const set = k => v => dispatch({ type: 'set', key: k, val: v })
 
-  // Sync agent into assignee when agent is chosen
   useEffect(() => {
     if (agent) dispatch({ type: 'set', key: 'assignee', val: agent })
   }, [agent])
 
-  // Sync dept owners when dept changes
   const cats   = master?.CATEGORY?.[form.qtype] || []
   const owners = master?.OWNER?.[form.dept]     || []
 
-  function handleQTypeChange(val) {
-    set('qtype')(val)
-    dispatch({ type: 'set', key: 'cat', val: '' })
-  }
-  function handleDeptChange(val) {
-    set('dept')(val)
-    dispatch({ type: 'set', key: 'owner', val: '' })
-  }
-  function handleSourceChange(val) {
-    set('source')(val)
-    if (form.sameSource) dispatch({ type: 'set', key: 'resp', val })
-  }
-  function toggleSameSource(checked) {
-    dispatch({ type: 'set', key: 'sameSource', val: checked })
-    if (checked) dispatch({ type: 'set', key: 'resp', val: form.source })
-  }
-  function setPri(val) {
-    dispatch({ type: 'set', key: 'priority', val: form.priority === val ? '' : val })
-  }
-  function setFCR(val) {
-    dispatch({ type: 'set', key: 'fcr', val: form.fcr === val ? '' : val })
-  }
+  function handleQTypeChange(val)   { set('qtype')(val); dispatch({ type: 'set', key: 'cat',   val: '' }) }
+  function handleDeptChange(val)    { set('dept')(val);  dispatch({ type: 'set', key: 'owner', val: '' }) }
+  function handleSourceChange(val)  { set('source')(val); if (form.sameSource) dispatch({ type: 'set', key: 'resp', val }) }
+  function toggleSameSource(checked){ dispatch({ type: 'set', key: 'sameSource', val: checked }); if (checked) dispatch({ type: 'set', key: 'resp', val: form.source }) }
+  function setPri(val) { dispatch({ type: 'set', key: 'priority', val: form.priority === val ? '' : val }) }
+  function setFCR(val) { dispatch({ type: 'set', key: 'fcr',      val: form.fcr      === val ? '' : val }) }
 
   function priClass(v) {
     if (form.priority !== v) return ''
@@ -117,58 +100,54 @@ export default function NewQuery() {
 
   async function handleSubmit() {
     const errs = []
-    if (!form.name.trim()) errs.push('Student Name')
+    if (!form.name.trim())  errs.push('Student Name')
     if (!form.phone.trim()) errs.push('Phone')
-    if (!form.utype)       errs.push('User Type')
-    if (!form.date)        errs.push('Date')
-    if (!form.source)      errs.push('Source')
-    if (!form.qtype)       errs.push('Query Type')
-    if (!form.cat)         errs.push('Category')
-    if (!form.desc.trim()) errs.push('Description')
-    if (!form.priority)    errs.push('Priority')
-    if (!form.dept)        errs.push('Department')
+    if (!form.utype)        errs.push('User Type')
+    if (!form.date)         errs.push('Date')
+    if (!form.source)       errs.push('Source')
+    if (!form.qtype)        errs.push('Query Type')
+    if (!form.cat)          errs.push('Category')
+    if (!form.desc.trim())  errs.push('Description')
+    if (!form.priority)     errs.push('Priority')
+    if (!form.dept)         errs.push('Department')
     if (errs.length) return showToast('error', 'Required fields missing', errs.join(', '))
 
     setSubmitting(true)
     showSpinner(true, 'Logging query…')
-
-    // Save form memory
     MEM.set('source', form.source)
     MEM.set('dept', form.dept)
 
     const ticket_id = generateTicketId()
     const payload = {
       ticket_id,
-      date:                  form.date,
-      student_name:          form.name.trim(),
-      phone:                 form.phone.trim(),
-      user_type:             form.utype,
-      batch:                 form.batch,
-      source:                form.source,
-      response_medium:       form.sameSource ? form.source : form.resp,
-      query_type:            form.qtype,
-      category:              form.cat,
-      query_description:     form.desc.trim(),
-      priority:              form.priority,
-      department:            form.dept,
-      owner:                 form.owner,
-      assignee:              form.assignee,
-      status:                form.status || 'Pending',
-      date_received:         form.date,
+      date:                   form.date,
+      student_name:           form.name.trim(),
+      phone:                  form.phone.trim(),
+      user_type:              form.utype,
+      batch:                  form.batch,
+      source:                 form.source,
+      response_medium:        form.sameSource ? form.source : form.resp,
+      query_type:             form.qtype,
+      category:               form.cat,
+      query_description:      form.desc.trim(),
+      priority:               form.priority,
+      department:             form.dept,
+      owner:                  form.owner,
+      assignee:               form.assignee,
+      status:                 form.status || 'Pending',
+      date_received:          form.date,
       first_contact_resolved: form.fcr,
-      remark:                form.remark.trim(),
+      remark:                 form.remark.trim(),
     }
 
     const { error } = await supabase.from('support_tickets').insert(payload)
-    showSpinner(false)
-    setSubmitting(false)
+    showSpinner(false); setSubmitting(false)
 
     if (error) {
       showToast('error', 'Save failed', error.message)
     } else {
       showToast('success', 'Query logged! ✓', `Ticket: ${ticket_id}`)
-      const nextId = generateTicketId()
-      setNextTicket(nextId)
+      setNextTicket(generateTicketId())
       dispatch({ type: 'reset', agent })
     }
   }
@@ -180,38 +159,48 @@ export default function NewQuery() {
 
   const statuses = master?.STATUS || ['Pending','In Process','Resolved','Closed','No Solution Yet']
 
-  return (
-    // Full-height container — no page scroll
-    <div className="h-full flex flex-col overflow-hidden py-4">
+  // Field gap used throughout
+  const GAP = 8
 
-      {/* Header row */}
-      <div className="flex items-center justify-between mb-3 shrink-0">
-        <div className="text-[18px] font-extrabold tracking-[-0.4px] text-text-primary">
-          Log a <span className="text-primary">Support Query</span>
+  return (
+    // Height = full available space (100vh - 56px topbar managed by parent flex)
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingTop: 12, paddingBottom: 8 }}>
+
+      {/* ── Header ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexShrink: 0 }}>
+        <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: -0.4, color: '#1e293b' }}>
+          Log a <span style={{ color: '#2563eb' }}>Support Query</span>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="text-[11px] text-text-muted">
-            <kbd className="bg-surface-bg border border-surface-border rounded px-1 text-[10px]">Ctrl+↵</kbd> to submit
-          </div>
-          <div className="text-[11.5px] font-semibold text-primary bg-primary-bg border border-primary-border px-3 py-[4px] rounded-[20px] tracking-[.3px] font-mono">
-            {nextTicket}
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>
+            <kbd style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '1px 5px', fontSize: 10, fontFamily: 'monospace' }}>Ctrl+↵</kbd> submit
+          </span>
+          <span style={{
+            fontSize: 11.5, fontWeight: 600, color: '#2563eb',
+            border: '1px solid #e2e8f0', borderRadius: 20,
+            padding: '3px 12px', fontFamily: 'JetBrains Mono, monospace',
+            letterSpacing: 0.3,
+          }}>{nextTicket}</span>
         </div>
       </div>
 
-      {/* Two-column form — scrollable columns */}
-      <div className="flex-1 overflow-hidden grid gap-0" style={{ gridTemplateColumns: '3fr 2fr' }}>
+      {/* ── Two-column layout — no overflow ── */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'grid', gridTemplateColumns: '3fr 2fr', gap: 0 }}>
 
-        {/* ── LEFT COLUMN ─────────────────────────────────────────────── */}
-        <div className="overflow-y-auto pr-5 flex flex-col gap-[10px] pb-4">
-
+        {/* ── LEFT COLUMN ── */}
+        <div style={{
+          overflowY: 'auto', paddingRight: 20, paddingBottom: 8,
+          display: 'flex', flexDirection: 'column', gap: GAP,
+          borderRight: '1px solid #f1f5f9',
+        }}>
           <Divider label="Student" />
+
           <CField label="Student Name" req>
             <input className="c-input" type="text" placeholder="e.g. Priya Sharma"
               value={form.name} onChange={e => set('name')(e.target.value)} autoComplete="off" />
           </CField>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <CField label="Phone" req>
               <input className="c-input" type="tel" placeholder="10-digit" maxLength={15}
                 value={form.phone} onChange={e => set('phone')(e.target.value)} />
@@ -221,7 +210,7 @@ export default function NewQuery() {
             </CField>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <CField label="Batch / Plan">
               <CSel value={form.batch} onChange={set('batch')} opts={master?.BATCH || []} />
             </CField>
@@ -231,7 +220,8 @@ export default function NewQuery() {
           </div>
 
           <Divider label="Query" />
-          <div className="grid grid-cols-2 gap-2">
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <CField label="Source" req>
               <CSel value={form.source} onChange={handleSourceChange} opts={master?.SOURCE || []} />
             </CField>
@@ -241,14 +231,13 @@ export default function NewQuery() {
             </CField>
           </div>
 
-          <label className="flex items-center gap-2 cursor-pointer -mt-1">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 7, cursor: 'pointer', marginTop: -2 }}>
             <input type="checkbox" checked={form.sameSource}
-              onChange={e => toggleSameSource(e.target.checked)}
-              style={{ width: 'auto' }} />
-            <span className="text-[11px] font-semibold text-status-success">✓ Same as source</span>
+              onChange={e => toggleSameSource(e.target.checked)} style={{ width: 'auto', accentColor: '#2563eb' }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: '#16a34a' }}>✓ Same as source</span>
           </label>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <CField label="Query Type" req>
               <CSel value={form.qtype} onChange={handleQTypeChange} opts={master?.QUERY_TYPE || []} />
             </CField>
@@ -260,16 +249,20 @@ export default function NewQuery() {
 
           <CField label="Description" req>
             <textarea className="c-input" rows={3} placeholder="Brief description of the issue or request…"
-              value={form.desc} onChange={e => set('desc')(e.target.value)} />
+              value={form.desc} onChange={e => set('desc')(e.target.value)}
+              style={{ minHeight: 'unset' }} />
           </CField>
         </div>
 
-        {/* ── RIGHT COLUMN ────────────────────────────────────────────── */}
-        <div className="overflow-y-auto pl-5 flex flex-col gap-[10px] pb-4 border-l border-surface-border">
-
+        {/* ── RIGHT COLUMN ── */}
+        <div style={{
+          overflowY: 'auto', paddingLeft: 20, paddingBottom: 8,
+          display: 'flex', flexDirection: 'column', gap: GAP,
+        }}>
           <Divider label="Priority" />
+
           <CField label="Priority" req>
-            <div className="flex gap-2">
+            <div style={{ display: 'flex', gap: 6 }}>
               {['High','Medium','Low'].map(v => (
                 <button key={v} onClick={() => setPri(v)} className={`p-pill ${priClass(v)}`}>
                   {v === 'High' ? '🔴' : v === 'Medium' ? '🟡' : '🟢'} {v}
@@ -279,6 +272,7 @@ export default function NewQuery() {
           </CField>
 
           <Divider label="Routing" />
+
           <CField label="Department" req>
             <CSel value={form.dept} onChange={handleDeptChange} opts={master?.DEPARTMENT || []} />
           </CField>
@@ -288,7 +282,7 @@ export default function NewQuery() {
               placeholder={owners.length ? '— Select Owner —' : '— Select dept first —'} />
           </CField>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <CField label="Assignee">
               <CSel value={form.assignee} onChange={set('assignee')} opts={master?.ASSIGNEE || []} />
             </CField>
@@ -298,12 +292,10 @@ export default function NewQuery() {
           </div>
 
           <Divider label="Resolution" />
+
           <CField label="First Contact Resolved?">
-            <div className="flex gap-2">
-              {[
-                { v:'Yes', label:'✓ Yes' },
-                { v:'No',  label:'✗ No'  },
-              ].map(({ v, label }) => (
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[{ v:'Yes', label:'✓ Yes' }, { v:'No', label:'✗ No' }].map(({ v, label }) => (
                 <button key={v} onClick={() => setFCR(v)}
                   className={`fcr-btn ${form.fcr === 'Yes' && v === 'Yes' ? 'sel-yes' : form.fcr === 'No' && v === 'No' ? 'sel-no' : ''}`}>
                   {label}
@@ -313,14 +305,20 @@ export default function NewQuery() {
           </CField>
 
           <CField label="Remark / Notes">
-            <textarea className="c-input" rows={3} placeholder="Follow-up needed, context…"
-              value={form.remark} onChange={e => set('remark')(e.target.value)} />
+            <textarea className="c-input" rows={2} placeholder="Follow-up needed, extra context…"
+              value={form.remark} onChange={e => set('remark')(e.target.value)}
+              style={{ minHeight: 'unset' }} />
           </CField>
 
-          {/* Submit buttons — pinned at bottom of right col */}
-          <div className="flex gap-2 justify-end mt-auto pt-2">
+          {/* Submit — always at bottom */}
+          <div style={{
+            marginTop: 'auto', paddingTop: 12,
+            borderTop: '1px solid #f1f5f9',
+            display: 'flex', justifyContent: 'flex-end', gap: 8,
+          }}>
             <button className="btn-ghost btn-sm" onClick={handleReset}>Clear</button>
-            <button id="submit-btn" className="btn-primary btn-sm px-5" onClick={handleSubmit} disabled={submitting}>
+            <button id="submit-btn" className="btn-primary btn-sm" onClick={handleSubmit} disabled={submitting}
+              style={{ paddingLeft: 20, paddingRight: 20 }}>
               Log Query →
             </button>
           </div>

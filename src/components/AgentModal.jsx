@@ -13,26 +13,41 @@ export default function AgentModal({ onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[500] flex items-center justify-center" style={{ background: 'rgba(15,23,42,.4)', backdropFilter: 'blur(4px)' }}>
-      <div className="bg-white rounded-[14px] p-6 w-[360px] max-w-[95vw]" style={{ boxShadow: '0 10px 15px rgba(0,0,0,.08)' }}>
-        <h3 className="text-[16px] font-bold text-text-primary mb-1">👋 Who are you?</h3>
-        <p className="text-[12.5px] text-text-secondary mb-4">Select your name to personalize your queue</p>
-        <div className="grid grid-cols-2 gap-2 mb-4">
+    <div
+      style={{ position: 'fixed', inset: 0, zIndex: 500, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,0.35)', backdropFilter: 'blur(8px)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div style={{
+        background: '#fff', borderRadius: 16, padding: 28,
+        width: 360, maxWidth: '95vw',
+        boxShadow: '0 20px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06)',
+        border: '1px solid #e8edf2',
+      }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>👋 Who are you?</div>
+        <div style={{ fontSize: 12.5, color: '#64748b', marginBottom: 20 }}>Select your name to personalize your queue</div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
           {agents.map(a => (
             <button
               key={a}
               onClick={() => setSelected(a)}
-              className={`px-[10px] py-[10px] border-[1.5px] rounded-lg text-[13px] font-medium text-center transition-all cursor-pointer
-                ${selected === a
-                  ? 'border-primary bg-primary-bg text-primary font-semibold'
-                  : 'border-surface-border2 text-text-secondary hover:border-primary hover:bg-primary-bg hover:text-primary'
-                }`}
-            >
-              {a}
-            </button>
+              style={{
+                padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                fontSize: 13, fontFamily: 'Inter, sans-serif', textAlign: 'center',
+                transition: 'all 0.15s ease',
+                fontWeight: selected === a ? 600 : 500,
+                background: selected === a ? '#eff6ff' : '#f8fafc',
+                border: selected === a ? '1.5px solid #2563eb' : '1px solid #e8edf2',
+                color: selected === a ? '#2563eb' : '#64748b',
+                boxShadow: selected === a ? '0 0 0 3px rgba(37,99,235,0.08)' : 'none',
+              }}
+            >{a}</button>
           ))}
         </div>
-        <button className="btn-primary w-full justify-center" onClick={confirm}>Continue →</button>
+
+        <button className="btn-primary" style={{ width: '100%', justifyContent: 'center' }} onClick={confirm}>
+          Continue →
+        </button>
       </div>
     </div>
   )

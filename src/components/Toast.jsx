@@ -3,19 +3,24 @@ import { useApp } from '../context/AppContext'
 export default function Toast() {
   const { toast } = useApp()
   if (!toast) return null
+  const isSuccess = toast.type === 'success'
   return (
-    <div
-      className="fixed bottom-[22px] right-[22px] z-[9999] bg-white border border-surface-border rounded-[10px] px-4 py-3 flex items-center gap-[10px] min-w-[260px] max-w-[340px]"
-      style={{
-        boxShadow: '0 10px 15px rgba(0,0,0,.08), 0 4px 6px rgba(0,0,0,.05)',
-        borderLeft: `3px solid ${toast.type === 'success' ? '#059669' : '#dc2626'}`,
-        animation: 'toastIn .3s cubic-bezier(.34,1.56,.64,1)',
-      }}
-    >
-      <div className="text-[17px] shrink-0">{toast.type === 'success' ? '✅' : '❌'}</div>
+    <div style={{
+      position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+      background: '#fff',
+      border: '1px solid #e8edf2',
+      borderLeft: `3px solid ${isSuccess ? '#16a34a' : '#e11d48'}`,
+      borderRadius: 12,
+      padding: '12px 16px',
+      display: 'flex', alignItems: 'center', gap: 10,
+      minWidth: 260, maxWidth: 340,
+      boxShadow: '0 8px 24px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04)',
+      animation: 'toastIn 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+    }}>
+      <div style={{ fontSize: 16, flexShrink: 0 }}>{isSuccess ? '✅' : '❌'}</div>
       <div>
-        <div className="font-semibold text-[13px] text-text-primary">{toast.title}</div>
-        {toast.sub && <div className="text-[11.5px] text-text-secondary mt-[1px]">{toast.sub}</div>}
+        <div style={{ fontWeight: 600, fontSize: 13, color: '#1e293b' }}>{toast.title}</div>
+        {toast.sub && <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 1 }}>{toast.sub}</div>}
       </div>
     </div>
   )
