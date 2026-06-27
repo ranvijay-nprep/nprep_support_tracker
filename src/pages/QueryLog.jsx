@@ -26,7 +26,8 @@ export default function QueryLog() {
   const [fPri,       setFPri]       = useState('')
   const [fQueue,     setFQueue]     = useState('')
   const [fType,      setFType]      = useState('')
-  const [fDate,      setFDate]      = useState('')
+  const [fDateFrom,  setFDateFrom]  = useState('')
+  const [fDateTo,    setFDateTo]    = useState('')
   const [page,       setPage]       = useState(1)
   const [modal,      setModal]      = useState(null)
   const [mStatus,    setMStatus]    = useState('')
@@ -42,16 +43,24 @@ export default function QueryLog() {
   }, [search])
 
   // Reset to page 1 when filters change
-  useEffect(() => { setPage(1) }, [dSearch, fStatus, fPri, fQueue, fType, fDate])
+  useEffect(() => { setPage(1) }, [dSearch, fStatus, fPri, fQueue, fType, fDateFrom, fDateTo])
 
   // Keep filtersRef in sync for realtime handlers
   useEffect(() => {
-    filtersRef.current = { page, dSearch, fStatus, fPri, fQueue, fType, fDate }
-  }, [page, dSearch, fStatus, fPri, fQueue, fType, fDate])
+    filtersRef.current = { page, dSearch, fStatus, fPri, fQueue, fType, fDateFrom, fDateTo }
+  }, [page, dSearch, fStatus, fPri, fQueue, fType, fDateFrom, fDateTo])
 
-  // ── Stats: lightweight separate query (global, no filters) ──
-  const loadStats = useCallback(async () => {
-    const { data } = await supabase.from('support_tickets').select('status')
+  // ── Stats: filter-aware (applies same filters except status) ──
+  const loadStats = useCallback(async (ds, fp, fq, ft, fd1, fd2) => {
+    let q = supabase.from('support_tickets').select('status')
+    if (fp)  q = q.eq('priority', fp)
+    if (fq === '__mine__') q = q.eq('assignee', agent)
+    else if (fq) q = q.eq('assignee', fq)
+    if (ft)  q = q.eq('query_type', ft)
+    if (fd1) q = q.gte('date', fd1)
+    if (fd2) q = q.lte('date', fd2)
+    if (ds)  q = q.or(`student_name.ilike.%${ds}%,ticket_id.ilike.%${ds}%,phone.ilike.%${ds}%`)
+    const { data } = await q
     if (!data) return
     setStats({
       total:    data.length,
@@ -60,10 +69,10 @@ export default function QueryLog() {
       resolved: data.filter(r => r.status === 'Resolved').length,
       noSol:    data.filter(r => r.status === 'No Solution Yet').length,
     })
-  }, [])
+  }, [agent])
 
   // ── Page data: server-side pagination + filters ──
-  const loadPage = useCallback(async (pg, ds, fs, fp, fq, ft, fd) => {
+  const loadPage = useCallback(async (pg, ds, fs, fp, fq, ft, fd1, fd2) => {
     setLoading(true)
     const from = (pg - 1) * PAGE_SIZE
     const to   = from + PAGE_SIZE - 1
@@ -78,13 +87,14 @@ export default function QueryLog() {
       .order('created_at', { ascending: false })
       .range(from, to)
 
-    if (fs) q = q.eq('status', fs)
-    if (fp) q = q.eq('priority', fp)
+    if (fs)  q = q.eq('status', fs)
+    if (fp)  q = q.eq('priority', fp)
     if (fq === '__mine__') q = q.eq('assignee', agent)
     else if (fq) q = q.eq('assignee', fq)
-    if (ft) q = q.eq('query_type', ft)
-    if (fd) q = q.eq('date', fd)
-    if (ds) q = q.or(`student_name.ilike.%${ds}%,ticket_id.ilike.%${ds}%,phone.ilike.%${ds}%`)
+    if (ft)  q = q.eq('query_type', ft)
+    if (fd1) q = q.gte('date', fd1)
+    if (fd2) q = q.lte('date', fd2)
+    if (ds)  q = q.or(`student_name.ilike.%${ds}%,ticket_id.ilike.%${ds}%,phone.ilike.%${ds}%`)
 
     const { data, count, error } = await q
     setLoading(false)
@@ -93,25 +103,24 @@ export default function QueryLog() {
     setTotalCount(count || 0)
   }, [agent, showToast])
 
-  // Load page when filters/page change
+  // Load page + stats when filters/page change
   useEffect(() => {
-    loadPage(page, dSearch, fStatus, fPri, fQueue, fType, fDate)
-  }, [page, dSearch, fStatus, fPri, fQueue, fType, fDate, loadPage])
-
-  // Load stats on mount
-  useEffect(() => { loadStats() }, [loadStats])
+    loadPage(page, dSearch, fStatus, fPri, fQueue, fType, fDateFrom, fDateTo)
+    loadStats(dSearch, fPri, fQueue, fType, fDateFrom, fDateTo)
+  }, [page, dSearch, fStatus, fPri, fQueue, fType, fDateFrom, fDateTo, loadPage, loadStats])
 
   // ── Realtime: reload page + stats on change ──
   useEffect(() => {
     const channel = supabase.channel('tickets-live')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_tickets' }, () => {
         const f = filtersRef.current
-        loadPage(f.page, f.dSearch, f.fStatus, f.fPri, f.fQueue, f.fType, f.fDate)
-        loadStats()
+        loadPage(f.page, f.dSearch, f.fStatus, f.fPri, f.fQueue, f.fType, f.fDateFrom, f.fDateTo)
+        loadStats(f.dSearch, f.fPri, f.fQueue, f.fType, f.fDateFrom, f.fDateTo)
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'support_tickets' }, payload => {
         setRows(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r))
-        loadStats()
+        const f = filtersRef.current
+        loadStats(f.dSearch, f.fPri, f.fQueue, f.fType, f.fDateFrom, f.fDateTo)
       })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -135,8 +144,8 @@ export default function QueryLog() {
     console.log('[quickResolve] patch:', patch)
     setRows(prev => prev.map(r => r.id === row.id ? { ...r, ...patch } : r))
     const { error } = await supabase.from('support_tickets').update(patch).eq('id', row.id)
-    if (error) { showToast('error', 'Failed', error.message); loadPage(page, dSearch, fStatus, fPri, fQueue, fType, fDate) }
-    else { showToast('success', 'Resolved!', row.ticket_id); loadStats() }
+    if (error) { showToast('error', 'Failed', error.message); loadPage(page, dSearch, fStatus, fPri, fQueue, fType, fDateFrom, fDateTo) }
+    else { showToast('success', 'Resolved!', row.ticket_id); loadStats(dSearch, fPri, fQueue, fType, fDateFrom, fDateTo) }
   }
 
   function openModal(row) {
@@ -156,8 +165,8 @@ export default function QueryLog() {
     setRows(prev => prev.map(r => r.id === modal.id ? { ...r, ...patch } : r))
     setModal(null)
     const { error } = await supabase.from('support_tickets').update(patch).eq('id', modal.id)
-    if (error) { showToast('error', 'Failed', error.message); loadPage(page, dSearch, fStatus, fPri, fQueue) }
-    else { showToast('success', 'Updated!', `${modal.ticket_id} → ${mStatus}`); loadStats() }
+    if (error) { showToast('error', 'Failed', error.message); loadPage(page, dSearch, fStatus, fPri, fQueue, fType, fDateFrom, fDateTo) }
+    else { showToast('success', 'Updated!', `${modal.ticket_id} → ${mStatus}`); loadStats(dSearch, fPri, fQueue, fType, fDateFrom, fDateTo) }
   }
 
   useEffect(() => {
@@ -198,9 +207,9 @@ export default function QueryLog() {
         ))}
       </div>
 
-      {/* ── Controls: row 1 — search + dropdowns ── */}
-      <div className="shrink-0 flex gap-2 items-center">
-        <div className="flex-1 relative min-w-0">
+      {/* ── Controls row ── */}
+      <div className="shrink-0 flex gap-2 items-center flex-wrap">
+        <div className="relative" style={{ minWidth: 200, flex: '1 1 200px' }}>
           <span className="absolute left-[9px] top-1/2 -translate-y-1/2 text-text-muted text-[13px] pointer-events-none">🔍</span>
           <input className="search-inp" placeholder="Search name, phone, ticket…"
             value={search} onChange={e => setSearch(e.target.value)} />
@@ -222,25 +231,40 @@ export default function QueryLog() {
           <option value="__mine__">My Queue</option>
           {assignees.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <input
-          type="date"
-          className="filter-sel"
-          style={{ cursor: 'pointer', color: fDate ? '#1e293b' : '#94a3b8' }}
-          value={fDate}
-          onChange={e => setFDate(e.target.value)}
-          title="Filter by date"
-        />
+
+        {/* Date range */}
+        <div style={{ display:'flex', alignItems:'center', gap:4, background:'#fff', border:'1px solid #e2e8f0', borderRadius:8, padding:'0 8px', height:34 }}>
+          <span style={{ fontSize:11, color:'#94a3b8', fontWeight:600, letterSpacing:.3 }}>FROM</span>
+          <input type="date" value={fDateFrom} onChange={e => setFDateFrom(e.target.value)}
+            style={{ border:'none', outline:'none', fontSize:12, color: fDateFrom ? '#1e293b' : '#94a3b8', background:'transparent', cursor:'pointer', width:120 }} />
+          <span style={{ fontSize:11, color:'#cbd5e1' }}>—</span>
+          <span style={{ fontSize:11, color:'#94a3b8', fontWeight:600, letterSpacing:.3 }}>TO</span>
+          <input type="date" value={fDateTo} onChange={e => setFDateTo(e.target.value)}
+            style={{ border:'none', outline:'none', fontSize:12, color: fDateTo ? '#1e293b' : '#94a3b8', background:'transparent', cursor:'pointer', width:120 }} />
+          {(fDateFrom || fDateTo) && (
+            <button onClick={() => { setFDateFrom(''); setFDateTo('') }}
+              style={{ marginLeft:2, fontSize:13, color:'#94a3b8', cursor:'pointer', background:'none', border:'none', lineHeight:1 }}>×</button>
+          )}
+        </div>
+
         <button
           id="refresh-log-btn"
           className="bg-white border-[1.5px] border-surface-border2 rounded-lg text-text-secondary font-medium text-[12.5px] px-3 py-[7px] cursor-pointer flex items-center gap-[5px] transition-all hover:border-primary hover:text-primary shrink-0"
-          onClick={() => { loadPage(page, dSearch, fStatus, fPri, fQueue, fType, fDate); loadStats() }}
+          onClick={() => { loadPage(page, dSearch, fStatus, fPri, fQueue, fType, fDateFrom, fDateTo); loadStats(dSearch, fPri, fQueue, fType, fDateFrom, fDateTo) }}
           title="Refresh (R)"
         >↻</button>
-        {(fStatus || fPri || fQueue || fType || fDate || search) && (
+        {(fStatus || fPri || fQueue || fType || fDateFrom || fDateTo || search) && (
           <button
-            className="text-[11.5px] text-text-muted hover:text-primary transition-colors shrink-0 underline"
-            onClick={() => { setSearch(''); setFStatus(''); setFPri(''); setFQueue(''); setFType(''); setFDate('') }}
-          >Clear</button>
+            onClick={() => { setSearch(''); setFStatus(''); setFPri(''); setFQueue(''); setFType(''); setFDateFrom(''); setFDateTo('') }}
+            style={{
+              fontSize: 12, fontWeight: 600, color: '#64748b',
+              background: '#f1f5f9', border: '1px solid #e2e8f0',
+              borderRadius: 20, padding: '4px 12px', cursor: 'pointer',
+              transition: 'all 0.15s', whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={e => { e.target.style.background='#fee2e2'; e.target.style.color='#e11d48'; e.target.style.borderColor='#fecdd3' }}
+            onMouseLeave={e => { e.target.style.background='#f1f5f9'; e.target.style.color='#64748b'; e.target.style.borderColor='#e2e8f0' }}
+          >✕ Clear all</button>
         )}
       </div>
 
