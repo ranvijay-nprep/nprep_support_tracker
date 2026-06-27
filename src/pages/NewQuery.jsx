@@ -152,8 +152,10 @@ export default function NewQuery() {
       department:             form.dept,
       owner:                  form.owner,
       assignee:               form.assignee,
-      status:                 form.status || 'Pending',
+      status:                 form.fcr === 'Yes' ? 'Resolved' : (form.status || 'Pending'),
       date_received:          new Date().toISOString(),
+      date_resolved:          form.fcr === 'Yes' ? new Date().toISOString() : null,
+      resolution_hrs:         form.fcr === 'Yes' ? 0 : null,
       first_contact_resolved: form.fcr,
       remark:                 form.remark.trim(),
     }
