@@ -25,6 +25,8 @@ export default function QueryLog() {
   const [fStatus,    setFStatus]    = useState('')
   const [fPri,       setFPri]       = useState('')
   const [fQueue,     setFQueue]     = useState('')
+  const [fType,      setFType]      = useState('')
+  const [fDate,      setFDate]      = useState('')
   const [page,       setPage]       = useState(1)
   const [modal,      setModal]      = useState(null)
   const [mStatus,    setMStatus]    = useState('')
@@ -40,12 +42,12 @@ export default function QueryLog() {
   }, [search])
 
   // Reset to page 1 when filters change
-  useEffect(() => { setPage(1) }, [dSearch, fStatus, fPri, fQueue])
+  useEffect(() => { setPage(1) }, [dSearch, fStatus, fPri, fQueue, fType, fDate])
 
   // Keep filtersRef in sync for realtime handlers
   useEffect(() => {
-    filtersRef.current = { page, dSearch, fStatus, fPri, fQueue }
-  }, [page, dSearch, fStatus, fPri, fQueue])
+    filtersRef.current = { page, dSearch, fStatus, fPri, fQueue, fType, fDate }
+  }, [page, dSearch, fStatus, fPri, fQueue, fType, fDate])
 
   // ── Stats: lightweight separate query (global, no filters) ──
   const loadStats = useCallback(async () => {
@@ -61,7 +63,7 @@ export default function QueryLog() {
   }, [])
 
   // ── Page data: server-side pagination + filters ──
-  const loadPage = useCallback(async (pg, ds, fs, fp, fq) => {
+  const loadPage = useCallback(async (pg, ds, fs, fp, fq, ft, fd) => {
     setLoading(true)
     const from = (pg - 1) * PAGE_SIZE
     const to   = from + PAGE_SIZE - 1
@@ -80,6 +82,8 @@ export default function QueryLog() {
     if (fp) q = q.eq('priority', fp)
     if (fq === '__mine__') q = q.eq('assignee', agent)
     else if (fq) q = q.eq('assignee', fq)
+    if (ft) q = q.eq('query_type', ft)
+    if (fd) q = q.eq('date', fd)
     if (ds) q = q.or(`student_name.ilike.%${ds}%,ticket_id.ilike.%${ds}%,phone.ilike.%${ds}%`)
 
     const { data, count, error } = await q
@@ -91,8 +95,8 @@ export default function QueryLog() {
 
   // Load page when filters/page change
   useEffect(() => {
-    loadPage(page, dSearch, fStatus, fPri, fQueue)
-  }, [page, dSearch, fStatus, fPri, fQueue, loadPage])
+    loadPage(page, dSearch, fStatus, fPri, fQueue, fType, fDate)
+  }, [page, dSearch, fStatus, fPri, fQueue, fType, fDate, loadPage])
 
   // Load stats on mount
   useEffect(() => { loadStats() }, [loadStats])
@@ -102,7 +106,7 @@ export default function QueryLog() {
     const channel = supabase.channel('tickets-live')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'support_tickets' }, () => {
         const f = filtersRef.current
-        loadPage(f.page, f.dSearch, f.fStatus, f.fPri, f.fQueue)
+        loadPage(f.page, f.dSearch, f.fStatus, f.fPri, f.fQueue, f.fType, f.fDate)
         loadStats()
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'support_tickets' }, payload => {
@@ -131,7 +135,7 @@ export default function QueryLog() {
     console.log('[quickResolve] patch:', patch)
     setRows(prev => prev.map(r => r.id === row.id ? { ...r, ...patch } : r))
     const { error } = await supabase.from('support_tickets').update(patch).eq('id', row.id)
-    if (error) { showToast('error', 'Failed', error.message); loadPage(page, dSearch, fStatus, fPri, fQueue) }
+    if (error) { showToast('error', 'Failed', error.message); loadPage(page, dSearch, fStatus, fPri, fQueue, fType, fDate) }
     else { showToast('success', 'Resolved!', row.ticket_id); loadStats() }
   }
 
@@ -163,7 +167,8 @@ export default function QueryLog() {
   }, [])
 
   const statuses  = (master?.STATUS || ['Pending','In Process','Resolved','No Solution Yet']).filter(s => s !== 'Closed')
-  const assignees = master?.ASSIGNEE || []
+  const assignees = master?.ASSIGNEE  || []
+  const queryTypes = master?.QUERY_TYPE || []
 
   const startNum  = totalCount === 0 ? 0 : (page - 1) * PAGE_SIZE + 1
   const endNum    = Math.min(page * PAGE_SIZE, totalCount)
@@ -193,13 +198,17 @@ export default function QueryLog() {
         ))}
       </div>
 
-      {/* ── Controls row ── */}
+      {/* ── Controls: row 1 — search + dropdowns ── */}
       <div className="shrink-0 flex gap-2 items-center">
         <div className="flex-1 relative min-w-0">
           <span className="absolute left-[9px] top-1/2 -translate-y-1/2 text-text-muted text-[13px] pointer-events-none">🔍</span>
           <input className="search-inp" placeholder="Search name, phone, ticket…"
             value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+        <select className="filter-sel" value={fType} onChange={e => setFType(e.target.value)}>
+          <option value="">All Types</option>
+          {queryTypes.map(t => <option key={t}>{t}</option>)}
+        </select>
         <select className="filter-sel" value={fStatus} onChange={e => setFStatus(e.target.value)}>
           <option value="">All Status</option>
           {statuses.map(s => <option key={s}>{s}</option>)}
@@ -213,17 +222,25 @@ export default function QueryLog() {
           <option value="__mine__">My Queue</option>
           {assignees.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
+        <input
+          type="date"
+          className="filter-sel"
+          style={{ cursor: 'pointer', color: fDate ? '#1e293b' : '#94a3b8' }}
+          value={fDate}
+          onChange={e => setFDate(e.target.value)}
+          title="Filter by date"
+        />
         <button
           id="refresh-log-btn"
           className="bg-white border-[1.5px] border-surface-border2 rounded-lg text-text-secondary font-medium text-[12.5px] px-3 py-[7px] cursor-pointer flex items-center gap-[5px] transition-all hover:border-primary hover:text-primary shrink-0"
-          onClick={() => { loadPage(page, dSearch, fStatus, fPri, fQueue); loadStats() }}
+          onClick={() => { loadPage(page, dSearch, fStatus, fPri, fQueue, fType, fDate); loadStats() }}
           title="Refresh (R)"
         >↻</button>
-        {(fStatus || fPri || fQueue || search) && (
+        {(fStatus || fPri || fQueue || fType || fDate || search) && (
           <button
             className="text-[11.5px] text-text-muted hover:text-primary transition-colors shrink-0 underline"
-            onClick={() => { setSearch(''); setFStatus(''); setFPri(''); setFQueue('') }}
-          >Clear filters</button>
+            onClick={() => { setSearch(''); setFStatus(''); setFPri(''); setFQueue(''); setFType(''); setFDate('') }}
+          >Clear</button>
         )}
       </div>
 
