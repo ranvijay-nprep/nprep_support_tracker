@@ -4,9 +4,10 @@ import { useApp } from '../context/AppContext'
 import AgentModal from './AgentModal'
 
 const NAV = [
-  { path: '/',         icon: '＋', label: 'New Query'  },
-  { path: '/log',      icon: '☰',  label: 'Query Log'  },
-  { path: '/settings', icon: '⚙',  label: 'Settings'   },
+  { path: '/',           icon: '＋', label: 'New Query'  },
+  { path: '/log',        icon: '☰',  label: 'Query Log'  },
+  { path: '/dashboard',  icon: '📊', label: 'Dashboard'  },
+  { path: '/settings',   icon: '⚙',  label: 'Settings'   },
 ]
 
 export default function Topbar() {

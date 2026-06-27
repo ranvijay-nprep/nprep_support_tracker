@@ -7,6 +7,7 @@ import Spinner from './components/Spinner'
 import NewQuery from './pages/NewQuery'
 import QueryLog from './pages/QueryLog'
 import Settings from './pages/Settings'
+import Dashboard from './pages/Dashboard'
 
 function Layout() {
   const location = useLocation()
@@ -36,13 +37,20 @@ function Layout() {
     <div className="h-full flex flex-col overflow-hidden bg-surface-bg">
       <Topbar />
       <div className="flex-1 overflow-hidden">
-        <div className="h-full max-w-[1080px] mx-auto px-4">
-          <Routes>
-            <Route path="/"         element={<NewQuery />} />
-            <Route path="/log"      element={<QueryLog />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </div>
+        <Routes>
+          {/* Dashboard: full-width, no max-width container */}
+          <Route path="/dashboard" element={<Dashboard />} />
+          {/* All other pages: constrained width */}
+          <Route path="*" element={
+            <div className="h-full max-w-[1080px] mx-auto px-4">
+              <Routes>
+                <Route path="/"         element={<NewQuery />} />
+                <Route path="/log"      element={<QueryLog />} />
+                <Route path="/settings" element={<Settings />} />
+              </Routes>
+            </div>
+          } />
+        </Routes>
       </div>
       <Toast />
       <Spinner />
